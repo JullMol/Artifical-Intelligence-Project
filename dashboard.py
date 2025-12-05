@@ -9,10 +9,12 @@ import gdown
 import os
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 from sklearn.decomposition import PCA
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 from skimage.feature import hog, local_binary_pattern
 from PIL import Image
 import io
 import zipfile
+from pathlib import Path
 
 # Page Configuration
 st.set_page_config(
@@ -62,145 +64,365 @@ st.markdown("""
         background-color: #fff3cd;
         border-left: 4px solid #ffc107;
     }
+    .loading-box {
+        background-color: #e3f2fd;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #2196f3;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Google Drive Links (Ganti dengan link Anda yang sudah di-share publicly)
 GDRIVE_LINKS = {
-    'svm': 'https://drive.google.com/uc?id=1ywToTGcjHcXdTG3L3VGI9HcgAMJ5jbeg',
-    'knn': 'https://drive.google.com/uc?id=1L7QpCS7qw3Xs0lE4LelKrW00jkL-4YxB',
-    'dt':  'https://drive.google.com/uc?id=1Pc_1kbDNDe2nusV-PLuLHM0K4UEpaVAf',
-    'xgb': 'https://drive.google.com/uc?id=1O7qCrqOHAUf_MqgZ6OUD6VVVaN6CUAwJ',
-    'scaler_standard': 'https://drive.google.com/uc?id=1yaLVtW1g1T92Tc8fj7VirB9mu04sgTOn',
-    'scaler_minmax':  'https://drive.google.com/uc?id=1QymHNi-HoVrWZ-mpkf2E2y4CjYKt6JUK',
-    'pca': 'https://drive.google.com/uc?id=19eJU4NHkLk1u5BVQBhmiKDB7zmO-D1SA',
-    'label_encoder': 'https://drive.google.com/uc?id=1XcKnuyEjIIktjh6A-eIh6dFYtdDGlkqS',
-    'extracted_features': 'https://drive.google.com/uc?id=1635XehoTjAvaLJGC6VTsilmDiXEsVeBG'
+    # Model files
+    'svm': 'https://drive.google.com/uc?id=1537b6LEIgRZFBOfULIDyYvSntBS07MXe',
+    'knn': 'https://drive.google.com/uc?id=1RPOaAAJFyvT0qVfWpNMxZUcoOlem8iUW',
+    'dt':  'https://drive.google.com/uc?id=19digDS8Ihn4n6oVccqgZgypRV_ckD7oj',
+    'xgb': 'https://drive.google.com/uc?id=1HjGTtRtvnALyvGlXyPOmJ14R5t08oWtn',
+    'scaler_hog': 'https://drive.google.com/uc?id=1qNCcygPQpTs4K_KewD5yXRb4rSLHA_Ny',
+    'scaler_lbp': 'https://drive.google.com/uc?id=1H-JHD7_SDozlt0hSjQTF7r5Kppcj9Uy3',
+    'scaler_hist': 'https://drive.google.com/uc?id=1NePlUaoFgxj49JL6_lZ3mDCR_TVckTQ2',
+    'pca': 'https://drive.google.com/uc?id=15Fjd3jKVhJm6HILOCJ8N7_57t01LPnle',
+    'label_encoder': 'https://drive.google.com/uc?id=14b3d_sJPytdQStrnaxHW4I8l6EAvFy3j',
+    'extracted_features': 'https://drive.google.com/uc?id=1tHewKjroeRO9_MO612vFumDlxfHnCOvK',
+    'sample_images_zip': 'https://drive.google.com/uc?id=1ee21Y0VDjhbjfMXkXr2GDnFwcOYZ54Yn',
+    'full_dataset_zip': 'https://drive.google.com/uc?id=1ee21Y0VDjhbjfMXkXr2GDnFwcOYZ54Yn'
 }
 
-# Initialize session state
-if 'models_loaded' not in st.session_state:
-    st.session_state.models_loaded = False
-if 'models' not in st.session_state:
-    st.session_state.models = {}
-if 'sample_data_loaded' not in st.session_state:
-    st.session_state.sample_data_loaded = False
+# Directory structure
+DIRS = {
+    'models': 'models',
+    'data': 'data',
+    'sample_images': 'data/sample_images',
+    'dataset': 'data/dataset'
+}
 
-# Helper Functions
-@st.cache_data
-def download_from_gdrive(url, output_path):
-    """Download file from Google Drive"""
+# Create directories
+for dir_path in DIRS.values():
+    os.makedirs(dir_path, exist_ok=True)
+
+def initialize_session_state():
+    defaults = {
+        'models_loaded': False,
+        'dataset_loaded': False,
+        'models': {},
+        'scalers': {},
+        'pca': None,
+        'label_encoder': None,
+        'class_names': [],
+        'sample_df': None,
+        'sample_images': {},
+        'initialization_done': False
+    }
+    
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+initialize_session_state()
+
+@st.cache_data(show_spinner=False)
+def download_file_from_gdrive(url, output_path, description="file"):
     try:
-        if not os.path.exists(output_path):
-            gdown.download(url, output_path, quiet=False)
-        return True
+        if not url or 'YOUR_' in url:
+            return False, f"{description} URL not configured"
+        
+        if os.path.exists(output_path):
+            return True, f"{description} already exists"
+        
+        # Create parent directory
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # Download
+        gdown.download(url, output_path, quiet=False)
+        
+        if os.path.exists(output_path):
+            return True, f"{description} downloaded successfully"
+        else:
+            return False, f"Failed to download {description}"
+            
     except Exception as e:
-        st.error(f"Error downloading: {e}")
-        return False
+        return False, f"Error downloading {description}: {str(e)}"
 
-@st.cache_resource
-def load_models():
-    """Load pre-trained models and scalers. Supports individual model files and two scaler files."""
-    models_dir = 'models'
-    os.makedirs(models_dir, exist_ok=True)
+def extract_zip(zip_path, extract_to):
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to)
+        return True, f"Extracted to {extract_to}"
+    except Exception as e:
+        return False, f"Extraction error: {str(e)}"
 
-    expected = {
+@st.cache_resource(show_spinner=False)
+def auto_load_models():
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
+    
+    with progress_placeholder.container():
+        st.markdown('<div class="loading-box">🔄 <b>Initializing AI System...</b></div>', unsafe_allow_html=True)
+    
+    models_dir = DIRS['models']
+    
+    # Model file mappings
+    model_files = {
         'svm': 'svm_model.pkl',
         'knn': 'knn_model.pkl',
         'dt':  'dt_model.pkl',
         'xgb': 'xgboost_model.pkl',
-        'scaler_standard': 'scaler_standard.pkl',
-        'scaler_minmax':  'scaler_minmax.pkl',
+        'scaler_hog': 'scaler_hog.pkl',
+        'scaler_lbp':  'scaler_lbp.pkl',
+        'scaler_hist': 'scaler_hist.pkl',
         'pca': 'pca.pkl',
         'label_encoder': 'label_encoder.pkl'
     }
-
-    # Download missing files from GDrive if links provided
-    for key, url in GDRIVE_LINKS.items():
-        out_path = os.path.join(models_dir, expected.get(key, f"{key}.pkl"))
-        if not os.path.exists(out_path) and url and 'YOUR_' not in url:
-            try:
-                download_from_gdrive(url, out_path)
-            except Exception:
-                # download_from_gdrive already reports errors via st.error
-                pass
-
+    
+    # Download all model files
+    total_files = len(model_files)
+    progress_bar = st.progress(0)
+    
+    for idx, (key, filename) in enumerate(model_files.items()):
+        file_path = os.path.join(models_dir, filename)
+        
+        status_placeholder.info(f"📥 Downloading {filename}... ({idx+1}/{total_files})")
+        
+        if key in GDRIVE_LINKS:
+            success, msg = download_file_from_gdrive(
+                GDRIVE_LINKS[key], 
+                file_path, 
+                filename
+            )
+            
+            if not success and not os.path.exists(file_path):
+                st.warning(f"⚠️ {msg}")
+        
+        progress_bar.progress((idx + 1) / total_files)
+    
+    # Load models
     models = {}
     scalers = {}
     pca = None
     label_encoder = None
-
-    # Load each model file if present
-    for mname in ['svm', 'knn', 'dt', 'xgb']:
-        path = os.path.join(models_dir, expected[mname])
-        if os.path.exists(path):
+    
+    status_placeholder.info("🔧 Loading models into memory...")
+    
+    # Load ML models
+    for model_name in ['svm', 'knn', 'dt', 'xgb']:
+        model_path = os.path.join(models_dir, model_files[model_name])
+        if os.path.exists(model_path):
             try:
-                with open(path, 'rb') as f:
-                    models[mname] = pickle.load(f)
+                with open(model_path, 'rb') as f:
+                    models[model_name] = pickle.load(f)
             except Exception as e:
-                st.warning(f"Could not load {mname} from {path}: {e}")
+                st.warning(f"⚠️ Could not load {model_name}: {e}")
+    
+    # Load scalers
+    if not scalers:
+        for feat_name in ['hog', 'lbp', 'hist']:
+            scaler_path = os.path.join(models_dir, f'scaler_{feat_name}.pkl')
+            if os.path.exists(scaler_path):
+                try:
+                    with open(scaler_path, 'rb') as f:
+                        scalers[feat_name] = pickle.load(f)
+                except Exception as e:
+                    st.warning(f"⚠️ Failed to load {feat_name} scaler: {e}")
 
-    # Load two scaler files (expecting either a dict or a scaler object)
-    for s_key in ['scaler_standard', 'scaler_minmax']:
-        path = os.path.join(models_dir, expected[s_key])
-        if os.path.exists(path):
-            try:
-                with open(path, 'rb') as f:
-                    data = pickle.load(f)
-                if isinstance(data, dict):
-                    # jika file berisi dict seperti {'hog': StandardScaler(), 'lbp': ...}
-                    scalers.update(data)
-                else:
-                    # single scaler object -> simpan dengan kunci khusus
-                    scalers[s_key] = data
-            except Exception as e:
-                st.warning(f"Failed to load {s_key}: {e}")
+    if 'hog' not in scalers:
+        st.warning("⚠️ HOG scaler missing, creating fitted dummy (identity transform)")
+        scalers['hog'] = StandardScaler()
+        scalers['hog'].mean_ = np.zeros(8100)
+        scalers['hog'].scale_ = np.ones(8100)
+        scalers['hog'].var_ = np.ones(8100)
+        scalers['hog'].n_features_in_ = 8100
+        scalers['hog'].n_samples_seen_ = 1000
 
-    # Load PCA if available
-    pca_path = os.path.join(models_dir, expected['pca'])
+    if 'lbp' not in scalers:
+        st.warning("⚠️ LBP scaler missing, creating fitted dummy (identity transform)")
+        scalers['lbp'] = StandardScaler()
+        scalers['lbp'].mean_ = np.zeros(18)
+        scalers['lbp'].scale_ = np.ones(18)
+        scalers['lbp'].var_ = np.ones(18)
+        scalers['lbp'].n_features_in_ = 18
+        scalers['lbp'].n_samples_seen_ = 1000
+
+    if 'hist' not in scalers:
+        st.warning("⚠️ Hist scaler missing, creating fitted dummy (identity transform)")
+        scalers['hist'] = MinMaxScaler()
+        scalers['hist'].min_ = np.zeros(96)
+        scalers['hist'].scale_ = np.ones(96)
+        scalers['hist'].data_min_ = np.zeros(96)
+        scalers['hist'].data_max_ = np.ones(96)
+        scalers['hist'].data_range_ = np.ones(96)
+        scalers['hist'].n_features_in_ = 96
+        scalers['hist'].n_samples_seen_ = 1000
+    
+    # Load PCA
+    pca_path = os.path.join(models_dir, model_files['pca'])
     if os.path.exists(pca_path):
         try:
             with open(pca_path, 'rb') as f:
                 pca = pickle.load(f)
         except Exception as e:
-            st.warning(f"Failed to load PCA: {e}")
-
+            st.warning(f"⚠️ Failed to load PCA: {e}")
+    
     # Load label encoder
-    le_path = os.path.join(models_dir, expected['label_encoder'])
+    le_path = os.path.join(models_dir, model_files['label_encoder'])
     if os.path.exists(le_path):
         try:
             with open(le_path, 'rb') as f:
                 label_encoder = pickle.load(f)
         except Exception as e:
-            st.warning(f"Failed to load label encoder: {e}")
-
-    # If no models found, return None to trigger upload/error in UI
+            st.warning(f"⚠️ Failed to load label encoder: {e}")
+    
+    progress_placeholder.empty()
+    status_placeholder.empty()
+    
     if not models:
-        return None, None, None, None
+        return None, None, None, None, False
+    
+    return models, scalers, pca, label_encoder, True
 
-    return models, scalers, pca, label_encoder
-
-@st.cache_data
-def load_sample_dataset():
-    """Load sample dataset for overview"""
-    sample_dir = 'sample_data'
-    os.makedirs(sample_dir, exist_ok=True)
+@st.cache_data(show_spinner=False)
+def auto_load_dataset():
+    status_placeholder = st.empty()
     
     # Load extracted features CSV
-    features_path = os.path.join(sample_dir, 'extracted_features')
+    features_path = os.path.join(DIRS['data'], 'extracted_features.csv')
     
-    try:
-        df = pd.read_csv(features_path)
-        return df
-    except FileNotFoundError:
-        return None
+    if not os.path.exists(features_path) and 'extracted_features' in GDRIVE_LINKS:
+        status_placeholder.info("📥 Downloading extracted features dataset...")
+        success, msg = download_file_from_gdrive(
+            GDRIVE_LINKS['extracted_features'],
+            features_path,
+            "extracted_features.csv"
+        )
+    
+    # Load CSV
+    df = None
+    if os.path.exists(features_path):
+        try:
+            df = pd.read_csv(features_path)
+            status_placeholder.success(f"✅ Dataset loaded: {len(df)} samples")
+        except Exception as e:
+            status_placeholder.warning(f"⚠️ Could not load CSV: {e}")
+    
+    # Download and extract sample images
+    sample_images = {}
+    sample_zip_path = os.path.join(DIRS['data'], 'sample_images.zip')
+    
+    if not os.listdir(DIRS['sample_images']) and 'sample_images_zip' in GDRIVE_LINKS:
+        status_placeholder.info("📥 Downloading sample images...")
+        success, msg = download_file_from_gdrive(
+            GDRIVE_LINKS['sample_images_zip'],
+            sample_zip_path,
+            "sample_images.zip"
+        )
+        
+        if success and os.path.exists(sample_zip_path):
+            status_placeholder.info("📦 Extracting sample images...")
+            extract_zip(sample_zip_path, DIRS['sample_images'])
+    
+    # Load sample images into memory
+    sample_dir = Path(DIRS['sample_images'])
+    if sample_dir.exists():
+        for img_file in sample_dir.rglob('*.png'):
+            try:
+                sample_images[img_file.stem] = Image.open(img_file)
+            except:
+                pass
+        
+        for img_file in sample_dir.rglob('*.jpg'):
+            try:
+                sample_images[img_file.stem] = Image.open(img_file)
+            except:
+                pass
+    
+    status_placeholder.empty()
+    
+    return df, sample_images
+
+# Initialize dynamic dataset stats di awal file, setelah auto_load_dataset()
+def get_dataset_stats():
+    df = st.session_state.sample_df 
+    
+    if df is not None:
+        # Auto-detect label column
+        label_col = None
+        for col in ['label', 'class', 'target', 'y']:
+            if col in df.columns:
+                label_col = col
+                break
+        
+        if label_col is None:
+            # Assume last column is label
+            label_col = df.columns[-1]
+        
+        return {
+            'total_images': len(df),
+            'classes': df[label_col].nunique(),
+            'features': len([c for c in df.columns if c != label_col])
+        }
+    
+    return {
+        'total_images': 0,
+        'classes': 3,
+        'features': 0
+    }
+
+if not st.session_state.initialization_done:
+    with st.spinner("🚀 Initializing AI Stroke Detection System..."):
+        # Auto-load models
+        models, scalers, pca, label_encoder, success = auto_load_models()
+        from sklearn.preprocessing import LabelEncoder
+        import numpy as np
+
+        class_names = []
+
+        if label_encoder is not None:
+            if hasattr(label_encoder, "classes_"):
+                class_names = list(label_encoder.classes_)
+
+            elif isinstance(label_encoder, (list, tuple, np.ndarray)):
+                le_new = LabelEncoder()
+                le_new.fit(label_encoder)
+                label_encoder = le_new
+                class_names = list(le_new.classes_)
+
+            else:
+                class_names = []
+        else:
+            class_names = []
+
+        if success:
+            st.session_state.models = models
+            st.session_state.scalers = scalers
+            st.session_state.pca = pca
+            manual_class_names = ["Bleeding", "Ischemia", "Normal"]
+
+            from sklearn.preprocessing import LabelEncoder
+            le_fixed = LabelEncoder()
+            le_fixed.fit(manual_class_names)
+            label_encoder = le_fixed
+            class_names = le_fixed.classes_.tolist()
+            st.session_state.label_encoder = le_fixed
+            st.session_state.class_names = class_names
+            st.session_state.models_loaded = True
+
+        # Auto-load dataset
+        df, sample_images = auto_load_dataset()
+        st.session_state.sample_df = df
+        st.session_state.sample_images = sample_images
+        st.session_state.dataset_loaded = (df is not None)
+
+        st.session_state.initialization_done = True
+        st.rerun()
+
 
 def extract_features(img_color, img_gray):
-    """Extract HOG, LBP, and Color Histogram features"""
     # HOG
     hog_feat = hog(img_gray, orientations=9, pixels_per_cell=(8, 8),
-                   cells_per_block=(2, 2), block_norm='L2-Hys', 
-                   transform_sqrt=True, visualize=False)
+                    cells_per_block=(2, 2), block_norm='L2-Hys', 
+                    transform_sqrt=True, visualize=False)
     
     # LBP
     radius, n_points = 2, 16
@@ -219,48 +441,56 @@ def extract_features(img_color, img_gray):
     return hog_feat, lbp_feat, hist_feat
 
 def preprocess_image(image, target_size=(128, 128)):
-    """Preprocess image for prediction"""
     img_resized = cv2.resize(image, target_size)
     img_gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
     return img_resized, img_gray
 
 def predict_image(image, models, scalers, pca, label_encoder):
-    """Make prediction on image"""
-    # Preprocess
+    # Preprocess image
     img_resized, img_gray = preprocess_image(image)
     
     # Extract features
     hog_feat, lbp_feat, hist_feat = extract_features(img_resized, img_gray)
     
-    # Normalize features
+    # Normalize features separately
     hog_norm = scalers['hog'].transform([hog_feat])
     lbp_norm = scalers['lbp'].transform([lbp_feat])
     hist_norm = scalers['hist'].transform([hist_feat])
     
-    # Apply PCA if exists
+    # Apply PCA
     if pca is not None:
         hog_pca = pca.transform(hog_norm)
         X_pred = np.hstack([hog_pca, lbp_norm, hist_norm])
     else:
         X_pred = np.hstack([hog_norm, lbp_norm, hist_norm])
     
-    # Predictions from all models
+    # Make predictions
     predictions = {}
     for name, model in models.items():
         pred = model.predict(X_pred)[0]
-        pred_class = label_encoder.inverse_transform([pred])[0]
+
+        # FIX: pastikan string
+        try:
+            pred_class = label_encoder.inverse_transform([pred])[0]
+        except:
+            pred_class = pred
+
+        pred_class = str(pred_class)  # <--- solusi utama
+
         proba = model.predict_proba(X_pred)[0]
-        confidence = np.max(proba) * 100
+        confidence = float(np.max(proba) * 100)
+
+        # FIX: pastikan key probability juga STR
+        class_labels = [str(c) for c in label_encoder.classes_] if hasattr(label_encoder, "classes_") else []
         
         predictions[name] = {
             'class': pred_class,
             'confidence': confidence,
-            'probabilities': dict(zip(label_encoder.classes_, proba))
+            'probabilities': dict(zip(class_labels, proba))
         }
     
     return predictions, (hog_feat, lbp_feat, hist_feat)
 
-# ==================== SIDEBAR ====================
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/brain.png", width=100)
     st.title("🧠 Navigation")
@@ -268,45 +498,43 @@ with st.sidebar:
     page = st.radio(
         "Select Page:",
         ["🏠 Home", "📊 Dataset Overview", "🔬 Feature Extraction", 
-         "🎯 Prediction", "📈 Model Performance", "ℹ️ About"],
+        "🎯 Prediction", "ℹ️ About"],
         label_visibility="collapsed"
     )
     
     st.markdown("---")
-    st.markdown("### ⚙️ Settings")
+    st.markdown("### ⚙️ System Status")
     
-    # Load models button
-    if not st.session_state.models_loaded:
-        if st.button("📥 Load Pre-trained Models", type="primary"):
-            with st.spinner("Loading models..."):
-                models, scalers, pca, label_encoder = load_models()
-                
-                if models is not None:
-                    st.session_state.models = models
-                    st.session_state.scalers = scalers
-                    st.session_state.pca = pca
-                    st.session_state.label_encoder = label_encoder
-                    st.session_state.class_names = label_encoder.classes_
-                    st.session_state.models_loaded = True
-                    st.success("✅ Models loaded!")
-                    st.rerun()
-                else:
-                    st.error("❌ Models not found. Please upload model files.")
+    # System status indicators
+    if st.session_state.models_loaded:
+        st.success(f"✅ Models: {len(st.session_state.models)} loaded")
     else:
-        st.success("✅ Models Ready")
-        if st.button("🔄 Reload Models"):
-            st.session_state.models_loaded = False
-            st.rerun()
+        st.error("❌ Models: Not loaded")
+    
+    if st.session_state.dataset_loaded:
+        st.success(f"✅ Dataset: {len(st.session_state.sample_df)} samples")
+    else:
+        st.warning("⚠️ Dataset: Not loaded")
+    
+    if st.session_state.sample_images:
+        st.success(f"✅ Images: {len(st.session_state.sample_images)} samples")
+    else:
+        st.info("ℹ️ No sample images")
+    
+    # Refresh button
+    if st.button("🔄 Refresh System", type="secondary"):
+        st.session_state.initialization_done = False
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
     
     st.markdown("---")
     st.markdown("### 📚 Resources")
     st.markdown("- [📁 Google Drive Dataset](https://drive.google.com/drive/folders/1arvBtDxdOE8-7caIXArXVTxOoS1vSUgd)")
-    st.markdown("- [💻 GitHub Repository](#)")
+    st.markdown("- [💻 GitHub Repository](https://github.com/JullMol/Artifical-Intelligence-Project)")
     
     st.markdown("---")
-    st.info("💡 **Tip**: Upload model files (PKL) if not found locally")
-
-# ==================== MAIN CONTENT ====================
+    st.info("💡 **Auto-Load**: Models and data load automatically on startup")
 
 # Header
 st.markdown('<p class="main-header">🧠 AI Stroke Detection & Classification System</p>', unsafe_allow_html=True)
@@ -315,6 +543,7 @@ st.markdown("---")
 
 # ==================== HOME PAGE ====================
 if page == "🏠 Home":
+    stats = get_dataset_stats()
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -359,11 +588,11 @@ if page == "🏠 Home":
         st.markdown("### 📊 Quick Statistics")
         
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Dataset Size", "2,350 Images", help="Total CT scan images in dataset")
+        st.metric("Dataset Size", f"{stats['total_images']} Images", help="Total CT scan images in dataset")
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Classes", "3 Types", help="Bleeding, Ischemia, Normal")
+        st.metric("Classes", f"{stats['classes']} Types", help="Bleeding, Ischemia, Normal")
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
@@ -389,11 +618,12 @@ elif page == "📊 Dataset Overview":
     st.markdown('<p class="sub-header">Dataset Overview & Statistics</p>', unsafe_allow_html=True)
     
     # Dataset Information
+    stats = get_dataset_stats()
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Total Images", "2,350")
+        st.metric("Total Images", f"{stats['total_images']}")
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
@@ -403,7 +633,7 @@ elif page == "📊 Dataset Overview":
     
     with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Classes", "3")
+        st.metric("Classes", f"{stats['classes']}")
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -411,20 +641,51 @@ elif page == "📊 Dataset Overview":
     # Class Distribution
     st.markdown("### 📊 Class Distribution")
     
-    # Sample data (ganti dengan data real dari CSV jika ada)
-    class_data = {
-        'Class': ['Bleeding', 'Ischemia', 'Normal'],
-        'Count': [750, 800, 800],
-        'Percentage': [31.9, 34.0, 34.0]
-    }
-    df_classes = pd.DataFrame(class_data)
+    # Use real dataset if available, otherwise fallback to hardcoded sample
+    if st.session_state.sample_df is not None:
+        df_dist = st.session_state.sample_df.copy()
+        # try common label column names
+        if 'label' in df_dist.columns:
+            label_col = 'label'
+        elif 'class' in df_dist.columns:
+            label_col = 'class'
+        else:
+            # assume last column is label if none named explicitly
+            label_col = df_dist.columns[-1]
+        
+        counts = df_dist[label_col].value_counts().sort_index()
+        
+        # if numeric labels and label_encoder available, map to class names
+        try:
+            if pd.api.types.is_integer_dtype(df_dist[label_col]) or pd.api.types.is_numeric_dtype(df_dist[label_col]):
+                le = st.session_state.label_encoder if 'label_encoder' in st.session_state else None
+                if le is not None:
+                    mapped_index = le.inverse_transform(counts.index.astype(int))
+                    counts.index = mapped_index
+        except Exception:
+            # ignore mapping errors and keep raw index
+            pass
+        
+        df_classes = pd.DataFrame({
+            'Class': counts.index.astype(str),
+            'Count': counts.values
+        })
+        total = df_classes['Count'].sum()
+        df_classes['Percentage'] = (df_classes['Count'] / total * 100).round(1)
+    else:
+        st.warning("Sample dataset belum tersedia — menggunakan contoh statis.")
+        df_classes = pd.DataFrame({
+            'Class': ['Bleeding', 'Ischemia', 'Normal'],
+            'Count': [750, 800, 800],
+            'Percentage': [31.9, 34.0, 34.0]
+        })
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("#### Bar Chart")
         fig, ax = plt.subplots(figsize=(10, 6))
-        colors = ['#ff6b6b', '#feca57', '#48dbfb']
+        colors = ['#ff6b6b', '#feca57', '#48dbfb'][:len(df_classes)]
         bars = ax.bar(df_classes['Class'], df_classes['Count'], color=colors, edgecolor='black', linewidth=2)
         ax.set_xlabel('Stroke Type', fontsize=12, fontweight='bold')
         ax.set_ylabel('Number of Images', fontsize=12, fontweight='bold')
@@ -433,7 +694,7 @@ elif page == "📊 Dataset Overview":
         for bar, count in zip(bars, df_classes['Count']):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height,
-                   f'{int(count)}', ha='center', va='bottom', fontweight='bold', fontsize=11)
+                    f'{int(count)}', ha='center', va='bottom', fontweight='bold', fontsize=11)
         
         plt.tight_layout()
         st.pyplot(fig)
@@ -441,7 +702,7 @@ elif page == "📊 Dataset Overview":
     with col2:
         st.markdown("#### Pie Chart")
         fig, ax = plt.subplots(figsize=(8, 8))
-        explode = (0.05, 0.05, 0.05)
+        explode = tuple([0.03]*len(df_classes))
         ax.pie(df_classes['Count'], labels=df_classes['Class'], autopct='%1.1f%%', 
                colors=colors, startangle=90, explode=explode,
                textprops={'fontsize': 12, 'fontweight': 'bold'})
@@ -706,7 +967,6 @@ elif page == "🔬 Feature Extraction":
                 st.write(f"- Max: {np.max(combined_features):.4f}")
                 
                 st.markdown("---")
-                st.info("You can save these extracted features or use them to visualize model decision boundaries in the Model Performance page.")
 
 # ==================== PREDICTION PAGE ====================
 elif page == "🎯 Prediction":
@@ -759,45 +1019,6 @@ elif page == "🎯 Prediction":
                     st.write(f"HOG length: {len(hog_feat)}, LBP length: {len(lbp_feat)}, Color hist length: {len(hist_feat)}")
                 except Exception as e:
                     st.error(f"Prediction failed: {e}")
-
-# ==================== MODEL PERFORMANCE PAGE ====================
-elif page == "📈 Model Performance":
-    st.markdown('<p class="sub-header">Model Evaluation & Metrics</p>', unsafe_allow_html=True)
-    
-    # Try to load sample dataset for evaluation
-    df = load_sample_dataset()
-    if df is None:
-        st.warning("Sample extracted_features.csv not found in ./sample_data/. Upload CSV named 'extracted_features.csv' there or via sidebar.")
-        st.info("If you have true labels and features, place CSV in sample_data directory with 'label' column.")
-    else:
-        st.success("Sample dataset loaded.")
-        st.dataframe(df.head(), use_container_width=True)
-        
-        if not st.session_state.models_loaded:
-            st.warning("Load models to evaluate on sample dataset.")
-        else:
-            target_col = st.selectbox("Select target/label column", options=[c for c in df.columns], index=len(df.columns)-1)
-            feature_cols = [c for c in df.columns if c != target_col]
-            if st.button("Run evaluation on loaded sample dataset"):
-                from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
-                X = df[feature_cols].values
-                y = df[target_col].values
-                # simple evaluation using first model in dict
-                model_name, model_obj = list(st.session_state.models.items())[0]
-                try:
-                    y_pred = model_obj.predict(X)
-                    cr = classification_report(y, y_pred, output_dict=True)
-                    cm = confusion_matrix(y, y_pred, labels=st.session_state.label_encoder.classes_)
-                    st.markdown("#### Classification Report")
-                    st.text(classification_report(y, y_pred))
-                    
-                    fig, ax = plt.subplots(figsize=(6,6))
-                    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=st.session_state.label_encoder.classes_)
-                    disp.plot(ax=ax, cmap='Blues', values_format='d')
-                    ax.set_title(f'Confusion Matrix — {model_name}')
-                    st.pyplot(fig)
-                except Exception as e:
-                    st.error(f"Evaluation failed: {e}")
 
 # ==================== ABOUT PAGE ====================
 elif page == "ℹ️ About":
