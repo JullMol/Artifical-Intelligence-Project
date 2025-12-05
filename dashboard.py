@@ -86,9 +86,9 @@ GDRIVE_LINKS = {
     'scaler_hist': 'https://drive.google.com/uc?id=1NePlUaoFgxj49JL6_lZ3mDCR_TVckTQ2',
     'pca': 'https://drive.google.com/uc?id=15Fjd3jKVhJm6HILOCJ8N7_57t01LPnle',
     'label_encoder': 'https://drive.google.com/uc?id=14b3d_sJPytdQStrnaxHW4I8l6EAvFy3j',
-    'extracted_features': 'https://drive.google.com/uc?id=1tHewKjroeRO9_MO612vFumDlxfHnCOvK',
+    'extracted_features': 'https://drive.google.com/uc?id=1r_gItSWbcYf94_-gVXgVksCzoQYp5-dg',
     'sample_images_zip': 'https://drive.google.com/uc?id=1ee21Y0VDjhbjfMXkXr2GDnFwcOYZ54Yn',
-    'full_dataset_zip': 'https://drive.google.com/uc?id=1ee21Y0VDjhbjfMXkXr2GDnFwcOYZ54Yn'
+    'full_dataset_zip': 'https://drive.google.com/uc?id=1ee21Y0VDjhbjfMXkXr2GDnFwcOYZ54Yn',
 }
 
 # Directory structure
@@ -287,21 +287,21 @@ def auto_load_dataset():
     status_placeholder = st.empty()
     
     # Load extracted features CSV
-    features_path = os.path.join(DIRS['data'], 'extracted_features.csv')
+    features_path = os.path.join(DIRS['data'], 'extracted_features.parquet')
     
     if not os.path.exists(features_path) and 'extracted_features' in GDRIVE_LINKS:
         status_placeholder.info("📥 Downloading extracted features dataset...")
         success, msg = download_file_from_gdrive(
             GDRIVE_LINKS['extracted_features'],
             features_path,
-            "extracted_features.csv"
+            "extracted_features.parquet"
         )
     
     # Load CSV
     df = None
     if os.path.exists(features_path):
         try:
-            df = pd.read_csv(features_path)
+            df = pd.read_parquet(features_path)
             status_placeholder.success(f"✅ Dataset loaded: {len(df)} samples")
         except Exception as e:
             status_placeholder.warning(f"⚠️ Could not load CSV: {e}")
