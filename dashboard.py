@@ -24,51 +24,66 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS - Updated for High Contrast
 st.markdown("""
 <style>
+    /* Header Utama */
     .main-header {
         font-size: 2.5rem;
-        color: #1f77b4;
+        color: #4da6ff; /* Biru lebih terang agar kontras di dark mode */
         text-align: center;
         margin-bottom: 2rem;
         font-weight: bold;
     }
     .sub-header {
         font-size: 1.5rem;
-        color: #ff7f0e;
+        color: #ffa726; /* Orange terang */
         margin-top: 1rem;
         margin-bottom: 1rem;
     }
+    
     .metric-card {
-        background-color: #f0f2f6;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-        margin: 0.5rem 0;
-    }
-    .prediction-card {
+        background-color: #262730; /* Warna gelap standar Streamlit */
+        border: 1px solid #4da6ff; /* Border biru */
         padding: 1rem;
         border-radius: 0.5rem;
         margin: 0.5rem 0;
     }
+    /* Paksa teks di dalam metric card jadi putih (opsional, defaultnya sudah putih) */
+    .metric-card div {
+        color: white !important;
+    }
+
+    .prediction-card {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+        color: #000000 !important; 
+        font-weight: 500;
+    }
+    
     .normal-card {
         background-color: #d4edda;
-        border-left: 4px solid #28a745;
+        border-left: 5px solid #28a745;
+        color: #155724 !important; /* Hijau tua gelap */
     }
     .bleeding-card {
         background-color: #f8d7da;
-        border-left: 4px solid #dc3545;
+        border-left: 5px solid #dc3545;
+        color: #721c24 !important; /* Merah tua gelap */
     }
     .ischemia-card {
         background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
+        border-left: 5px solid #ffc107;
+        color: #856404 !important; /* Kuning tua gelap */
     }
+    
     .loading-box {
         background-color: #e3f2fd;
         padding: 1rem;
         border-radius: 0.5rem;
         border-left: 4px solid #2196f3;
+        color: #0c5460 !important; /* Biru tua gelap */
         margin: 1rem 0;
     }
 </style>
