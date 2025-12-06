@@ -307,7 +307,6 @@ def auto_load_dataset():
             status_placeholder.warning(f"⚠️ Could not load CSV: {e}")
     
     # Download and extract sample images
-    sample_images = {}
     sample_zip_path = os.path.join(DIRS['data'], 'sample_images.zip')
     
     if not os.listdir(DIRS['sample_images']) and 'sample_images_zip' in GDRIVE_LINKS:
@@ -321,6 +320,13 @@ def auto_load_dataset():
         if success and os.path.exists(sample_zip_path):
             status_placeholder.info("📦 Extracting sample images...")
             extract_zip(sample_zip_path, DIRS['sample_images'])
+
+            try:
+                os.remove(sample_zip_path)
+                status_placeholder.info("🗑️ Removed zip file after extraction.")
+            except:
+                pass
+    status_placeholder.empty()
     
     # Load sample images into memory
     sample_dir = Path(DIRS['sample_images'])
@@ -339,7 +345,7 @@ def auto_load_dataset():
     
     status_placeholder.empty()
     
-    return df, sample_images
+    return df, DIRS['sample_images']
 
 # Initialize dynamic dataset stats di awal file, setelah auto_load_dataset()
 def get_dataset_stats():
@@ -718,7 +724,28 @@ elif page == "📊 Dataset Overview":
     
     # Sample Images Section
     st.markdown("### 🖼️ Sample Images from Dataset")
-    st.info("**Note**: These are representative samples from the full dataset stored in Google Drive.")
+    image_dir_path = st.session_state.sample_images
+
+    all_image_files = []
+    if isinstance(image_dir_path, str) and os.path.exists(image_dir_path):
+        p = Path(image_dir_path)
+        all_image_files = list(p.rglob('*.jpg')) + list(p.rglob('*.png')) + list(p.rglob('*.jpeg'))
+
+    if all_image_files:
+        num_display = 9
+        st.write(f"Total images available on disk: {len(all_image_files)}")
+
+        cols = st.columns(3)
+        for idx, img_path in enumerate(all_image_files[:num_display]):
+            with cols[idx % 3]:
+                try:
+                    img_obj = Image.open(img_path)
+                    st.image(img_obj, caption=img_path.stem, use_container_width=True)
+                    img_obj.close()
+                except Exception as e:
+                    st.error(f"Error loading image {img_path.name}: {e}")
+    else:
+        st.info("ℹ️ Images are not downloaded yet or folder is empty.")
     
     # Upload sample images option
     st.markdown("#### Upload Sample Images (Optional)")
