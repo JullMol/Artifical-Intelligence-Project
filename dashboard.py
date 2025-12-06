@@ -533,14 +533,12 @@ with st.sidebar:
         st.error("❌ Models: Not loaded")
     
     if st.session_state.dataset_loaded:
-        st.success(f"✅ Dataset: {len(st.session_state.sample_df)} samples")
-    else:
-        st.warning("⚠️ Dataset: Not loaded")
+        st.success(f"✅ Data Features: Loaded")
     
-    if st.session_state.sample_images:
-        st.success(f"✅ Images: {len(st.session_state.sample_images)} samples")
+    if st.session_state.sample_images and os.path.exists(st.session_state.sample_images):
+        st.success(f"✅ Images: Ready on disk")
     else:
-        st.info("ℹ️ No sample images")
+        st.info("ℹ️ Images: Downloading...")
     
     # Refresh button
     if st.button("🔄 Refresh System", type="secondary"):
@@ -608,21 +606,20 @@ if page == "🏠 Home":
     with col2:
         st.markdown("### 📊 Quick Statistics")
         
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Dataset Size", f"{stats['total_images']} Images", help="Total CT scan images in dataset")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Classes", f"{stats['classes']} Types", help="Bleeding, Ischemia, Normal")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Models", "4 Algorithms", help="SVM, KNN, DT, XGBoost")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Best Accuracy", "96.8%", help="Achieved by SVM model")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Dataset Size</div>
+                    <div style="font-size: 1.5rem; font-weight: bold;">{stats['total_images']} Images</div>
+                </div>
+                <div class="metric-card">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Classes</div>
+                    <div style="font-size: 1.5rem; font-weight: bold;">{stats['classes']} Types</div>
+                </div>
+                <div class="metric-card">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Best Accuracy</div>
+                    <div style="font-size: 1.5rem; font-weight: bold;">96.8%</div>
+                </div>
+                """, unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -643,19 +640,28 @@ elif page == "📊 Dataset Overview":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Total Images", f"{stats['total_images']}")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="font-size: 0.9rem; opacity: 0.8;">Total Images</div>
+                <div style="font-size: 1.8rem; font-weight: bold;">{stats['total_images']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
     with col2:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Image Size", "128×128 px")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+            st.markdown("""
+            <div class="metric-card">
+                <div style="font-size: 0.9rem; opacity: 0.8;">Image Size</div>
+                <div style="font-size: 1.8rem; font-weight: bold;">128×128 px</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
     with col3:
-        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("Classes", f"{stats['classes']}")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="font-size: 0.9rem; opacity: 0.8;">Classes</div>
+                <div style="font-size: 1.8rem; font-weight: bold;">{stats['classes']}</div>
+            </div>
+            """, unsafe_allow_html=True)
     
     st.markdown("---")
     
