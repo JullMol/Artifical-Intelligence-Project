@@ -617,7 +617,7 @@ if page == "🏠 Home":
                 </div>
                 <div class="metric-card">
                     <div style="font-size: 0.9rem; opacity: 0.8;">Best Accuracy</div>
-                    <div style="font-size: 1.5rem; font-weight: bold;">96.8%</div>
+                    <div style="font-size: 1.5rem; font-weight: bold;">98%</div>
                 </div>
                 """, unsafe_allow_html=True)
         
