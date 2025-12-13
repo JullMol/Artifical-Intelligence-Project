@@ -616,7 +616,7 @@ if page == "🏠 Home":
                     <div style="font-size: 1.5rem; font-weight: bold;">{stats['classes']} Types</div>
                 </div>
                 <div class="metric-card">
-                    <div style="font-size: 0.9rem; opacity: 0.8;">Best Accuracy</div>
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Best Accuracy: SVM Tuned</div>
                     <div style="font-size: 1.5rem; font-weight: bold;">98%</div>
                 </div>
                 """, unsafe_allow_html=True)
